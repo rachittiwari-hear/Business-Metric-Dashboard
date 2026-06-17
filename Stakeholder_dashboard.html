@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Business Metrics Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600;700&display=swap');
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0d0f14;--surface:#161a23;--surface2:#1e2330;--border:#2a3047;
+  --accent:#4f7cff;--green:#00e5a0;--warn:#ff6b35;--danger:#ff3b5c;
+  --text:#e8eaf2;--muted:#7a82a0;
+  --mono:'IBM Plex Mono',monospace;--sans:'IBM Plex Sans',sans-serif;
+}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-weight:300;line-height:1.5;min-height:100vh}
+
+/* UPLOAD SCREEN */
+#uploadScreen{
+  position:fixed;inset:0;background:var(--bg);z-index:9999;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:24px;
+}
+.upload-box{
+  border:2px dashed var(--border);border-radius:16px;padding:48px 64px;
+  text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;
+  max-width:520px;width:90%;
+}
+.upload-box:hover,.upload-box.drag{border-color:var(--accent);background:#4f7cff0a}
+.upload-icon{font-size:48px;margin-bottom:16px}
+.upload-title{font-size:22px;font-weight:700;margin-bottom:8px}
+.upload-sub{font-size:13px;color:var(--muted);margin-bottom:20px}
+.upload-btn{
+  background:var(--accent);border:none;color:#fff;font-family:var(--mono);
+  font-size:13px;font-weight:600;padding:10px 24px;border-radius:8px;cursor:pointer;
+  letter-spacing:0.05em;text-transform:uppercase;
+}
+.upload-btn:hover{opacity:0.85}
+#fileInput{display:none}
+.upload-hint{font-size:11px;color:var(--muted);font-family:var(--mono)}
+
+/* API KEY INPUT */
+.api-row{
+  display:flex;gap:8px;align-items:center;max-width:520px;width:90%;
+}
+.api-input{
+  flex:1;background:var(--surface);border:1px solid var(--border);color:var(--text);
+  font-family:var(--mono);font-size:12px;padding:8px 12px;border-radius:8px;
+}
+.api-input:focus{outline:1px solid var(--accent)}
+.api-input::placeholder{color:var(--muted)}
+.api-label{font-size:11px;color:var(--muted);font-family:var(--mono);white-space:nowrap}
+
+/* HEADER */
+.header{
+  background:var(--surface);border-bottom:1px solid var(--border);
+  padding:14px 28px;display:flex;align-items:center;justify-content:space-between;
+  position:sticky;top:0;z-index:100;
+}
+.logo{font-family:var(--mono);font-size:12px;font-weight:600;color:var(--accent);letter-spacing:0.08em}
+.file-badge{
+  font-family:var(--mono);font-size:11px;color:var(--green);
+  background:#00e5a015;border:1px solid #00e5a030;padding:3px 10px;border-radius:20px;
+  display:flex;align-items:center;gap:6px;
+}
+.reload-btn{
+  font-size:11px;font-family:var(--mono);background:transparent;border:1px solid var(--border);
+  color:var(--muted);padding:3px 10px;border-radius:6px;cursor:pointer;
+}
+.reload-btn:hover{border-color:var(--accent);color:var(--accent)}
+
+/* FILTERS */
+.filters{
+  display:flex;gap:12px;padding:12px 28px;background:var(--surface2);
+  border-bottom:1px solid var(--border);flex-wrap:wrap;align-items:center;
+}
+.filter-label{font-family:var(--mono);font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em}
+select{
+  background:var(--surface);border:1px solid var(--border);color:var(--text);
+  font-family:var(--sans);font-size:12px;padding:5px 26px 5px 8px;border-radius:6px;
+  cursor:pointer;appearance:none;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' fill='%237a82a0'%3E%3Cpath d='M0 0l5 6 5-6z'/%3E%3C/svg%3E");
+  background-repeat:no-repeat;background-position:right 8px center;
+}
+.pills{display:flex;gap:6px;flex-wrap:wrap}
+.pill{
+  font-family:var(--mono);font-size:10px;padding:3px 10px;border-radius:20px;
+  border:1px solid var(--border);background:transparent;color:var(--muted);
+  cursor:pointer;transition:all 0.15s;text-transform:uppercase;letter-spacing:0.05em;
+}
+.pill.active{background:var(--accent);border-color:var(--accent);color:#fff}
+.pill:hover:not(.active){border-color:var(--accent);color:var(--accent)}
+
+/* MAIN */
+.main{padding:20px 28px}
+
+/* KPI STRIP */
+.kpi-strip{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-bottom:20px}
+.kpi{
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:14px 16px;position:relative;overflow:hidden;
+}
+.kpi::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:var(--accent)}
+.kpi.g::before{background:var(--green)}.kpi.r::before{background:var(--danger)}.kpi.w::before{background:var(--warn)}
+.kpi-lbl{font-size:10px;color:var(--muted);font-family:var(--mono);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:4px}
+.kpi-val{font-size:22px;font-weight:700;font-family:var(--mono)}
+.kpi-sub{font-size:10px;color:var(--muted);margin-top:3px}
+.kpi-chg{font-size:11px;font-family:var(--mono);margin-top:5px}
+.up{color:var(--green)}.dn{color:var(--danger)}
+
+/* CHARTS */
+.charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(440px,1fr));gap:16px;margin-bottom:20px}
+.chart-card{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:18px}
+.chart-card.wide{grid-column:1/-1}
+.ct{font-size:11px;font-weight:600;color:var(--text);font-family:var(--mono);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:3px}
+.cs{font-size:11px;color:var(--muted);margin-bottom:14px}
+.cw{position:relative;height:210px}
+
+/* INSIGHTS */
+.ins-hdr{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+.ins-badge{
+  background:linear-gradient(135deg,#4f7cff,#00e5a0);padding:3px 10px;
+  border-radius:20px;font-size:10px;font-family:var(--mono);font-weight:600;
+  color:#fff;text-transform:uppercase;letter-spacing:0.08em
+}
+.ins-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin-bottom:20px}
+.ins-card{
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  padding:16px 18px;border-left:3px solid var(--accent)
+}
+.ins-card.pos{border-left-color:var(--green)}.ins-card.warn{border-left-color:var(--warn)}.ins-card.dng{border-left-color:var(--danger)}
+.ins-tag{font-family:var(--mono);font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:var(--muted);margin-bottom:5px}
+.ins-txt{font-size:12px;line-height:1.6}
+.ins-act{margin-top:8px;font-size:11px;color:var(--green);font-style:italic}
+
+/* AI CHAT */
+.ai-wrap{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:20px}
+.ai-hdr{
+  display:flex;align-items:center;gap:10px;padding:12px 18px;
+  background:var(--surface2);border-bottom:1px solid var(--border)
+}
+.ai-dot{width:8px;height:8px;background:var(--green);border-radius:50%;animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:0.4}}
+.ai-msgs{padding:14px 18px;max-height:260px;overflow-y:auto;display:flex;flex-direction:column;gap:10px}
+.amsg{display:flex;gap:8px;align-items:flex-start}
+.av{
+  width:26px;height:26px;border-radius:50%;flex-shrink:0;display:flex;
+  align-items:center;justify-content:center;font-size:10px;font-weight:700;color:#fff;
+  background:linear-gradient(135deg,var(--accent),var(--green))
+}
+.uav{background:#2a3a6a}
+.ab{
+  background:var(--surface2);border:1px solid var(--border);border-radius:0 8px 8px 8px;
+  padding:8px 12px;font-size:12px;line-height:1.6;max-width:85%
+}
+.umsg{flex-direction:row-reverse}
+.umsg .ab{background:#1e2a4a;border-color:#2a3a6a;border-radius:8px 0 8px 8px}
+.qqs{display:flex;gap:6px;padding:0 18px 12px;flex-wrap:wrap}
+.qq{
+  font-size:11px;padding:3px 10px;border:1px solid var(--border);border-radius:6px;
+  background:transparent;color:var(--muted);cursor:pointer;font-family:var(--sans);transition:all 0.15s
+}
+.qq:hover{border-color:var(--accent);color:var(--accent)}
+.ai-inp-row{
+  display:flex;gap:8px;padding:12px 18px;border-top:1px solid var(--border);background:var(--surface2)
+}
+.ai-inp{
+  flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);
+  font-family:var(--sans);font-size:12px;padding:7px 10px;border-radius:7px
+}
+.ai-inp:focus{outline:1px solid var(--accent)}
+.ai-inp::placeholder{color:var(--muted)}
+.sbtn{
+  background:var(--accent);border:none;color:#fff;font-family:var(--mono);
+  font-size:11px;font-weight:600;padding:7px 14px;border-radius:7px;cursor:pointer;
+  text-transform:uppercase;letter-spacing:0.06em
+}
+.sbtn:disabled{opacity:0.4;cursor:not-allowed}
+
+/* TABLE */
+.tbl-wrap{background:var(--surface);border:1px solid var(--border);border-radius:10px;overflow:hidden;overflow-x:auto}
+table{width:100%;border-collapse:collapse;font-size:11px}
+thead th{
+  background:var(--surface2);padding:8px 12px;text-align:left;
+  font-family:var(--mono);font-size:9px;text-transform:uppercase;
+  letter-spacing:0.08em;color:var(--muted);white-space:nowrap;border-bottom:1px solid var(--border)
+}
+tbody tr{border-bottom:1px solid var(--border);transition:background 0.1s}
+tbody tr:hover{background:var(--surface2)}
+tbody tr:last-child{border-bottom:none}
+td{padding:8px 12px;color:var(--text);white-space:nowrap}
+td.mn{font-weight:600;max-width:180px;white-space:normal;min-width:140px}
+.sdot{display:inline-block;width:6px;height:6px;border-radius:50%;margin-right:5px}
+.dg{background:var(--green)}.dr{background:var(--danger)}.dy{background:var(--warn)}
+
+::-webkit-scrollbar{width:5px;height:5px}
+::-webkit-scrollbar-track{background:var(--bg)}
+::-webkit-scrollbar-thumb{background:var(--border);border-radius:3px}
+
+.tbl-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.sec-ttl{font-size:11px;font-weight:600;font-family:var(--mono);text-transform:uppercase;letter-spacing:0.06em}
+@media(max-width:600px){
+  .main,.header,.filters{padding-left:14px;padding-right:14px}
+  .charts{grid-template-columns:1fr}
+  .kpi-strip{grid-template-columns:repeat(2,1fr)}
+}
+</style>
+</head>
+<body>
+
+<!-- UPLOAD SCREEN -->
+<div id="uploadScreen">
+  <div style="text-align:center">
+    <div style="font-family:var(--mono);font-size:11px;color:var(--accent);letter-spacing:0.1em;margin-bottom:8px">◈ METRICSPULSE</div>
+    <div style="font-size:24px;font-weight:700;margin-bottom:4px">Business Intelligence Dashboard</div>
+    <div style="font-size:13px;color:var(--muted)">Upload your Excel file to get started</div>
+  </div>
+
+  <div class="upload-box" id="dropZone" onclick="document.getElementById('fileInput').click()">
+    <div class="upload-icon">📊</div>
+    <div class="upload-title">Drop your Excel file here</div>
+    <div class="upload-sub">Reads data from Column C (metrics) and Column E (descriptions),<br>with monthly data in the subsequent columns.</div>
+    <button class="upload-btn" onclick="event.stopPropagation();document.getElementById('fileInput').click()">Browse File</button>
+    <input type="file" id="fileInput" accept=".xlsx,.xls" onchange="handleFile(this.files[0])">
+  </div>
+
+  <div class="api-row">
+    <span class="api-label">Claude API Key:</span>
+    <input class="api-input" id="apiKeyInput" type="password" placeholder="sk-ant-api03-… (required for AI chat)">
+  </div>
+  <div class="upload-hint">API key is stored only in memory. Never leaves your browser.</div>
+</div>
+
+<!-- DASHBOARD -->
+<div id="dashWrap" style="display:none">
+
+<header class="header">
+  <span class="logo">◈ METRICSPULSE</span>
+  <span id="fileBadge" class="file-badge"><span>●</span><span id="fileName"></span></span>
+  <button class="reload-btn" onclick="resetUpload()">↑ Load New File</button>
+</header>
+
+<div class="filters">
+  <div style="display:flex;align-items:center;gap:8px">
+    <span class="filter-label">From</span>
+    <select id="monthFrom"></select>
+    <span style="color:var(--muted);font-size:11px">→</span>
+    <select id="monthTo"></select>
+  </div>
+  <div style="display:flex;align-items:center;gap:8px;margin-left:auto;flex-wrap:wrap">
+    <span class="filter-label">Category</span>
+    <div class="pills" id="catPills"></div>
+  </div>
+</div>
+
+<div class="main">
+  <div class="kpi-strip" id="kpiStrip"></div>
+  <div class="charts" id="chartsGrid"></div>
+
+  <div style="margin-bottom:20px">
+    <div class="ins-hdr">
+      <span class="ins-badge">AI Analysis</span>
+      <span style="font-size:14px;font-weight:600">Smart Insights & Recommendations</span>
+    </div>
+    <div class="ins-grid" id="insightGrid"></div>
+  </div>
+
+  <div class="ai-wrap">
+    <div class="ai-hdr">
+      <div class="ai-dot"></div>
+      <span style="font-size:13px;font-weight:600">Ask the Data</span>
+      <span style="font-size:10px;color:var(--muted);font-family:var(--mono);margin-left:auto">Powered by Claude</span>
+    </div>
+    <div class="ai-msgs" id="aiMsgs">
+      <div class="amsg">
+        <div class="av">AI</div>
+        <div class="ab">Hi! I've analysed your business metrics. Ask me anything about trends, anomalies, or actions to take next month.</div>
+      </div>
+    </div>
+    <div class="qqs" id="quickQs">
+      <button class="qq" onclick="sendQuick(this)">What's the biggest risk next month?</button>
+      <button class="qq" onclick="sendQuick(this)">Why is revenue achievement below target?</button>
+      <button class="qq" onclick="sendQuick(this)">Explain the CPP trend</button>
+      <button class="qq" onclick="sendQuick(this)">HR attrition concerns?</button>
+      <button class="qq" onclick="sendQuick(this)">Best performing metric this year?</button>
+    </div>
+    <div class="ai-inp-row">
+      <input class="ai-inp" id="aiInp" placeholder="Ask about any metric, trend, or action…" onkeydown="if(event.key==='Enter')sendMsg()">
+      <button class="sbtn" id="sBtn" onclick="sendMsg()">Send</button>
+    </div>
+  </div>
+
+  <div class="tbl-hdr">
+    <span class="sec-ttl">All Metrics — Month on Month</span>
+  </div>
+  <div class="tbl-wrap" id="tblWrap"></div>
+</div>
+</div>
+
+<script>
+// ══════════════════════════════════════════
+// GLOBALS
+// ══════════════════════════════════════════
+let DATA = [];        // [{sn,metric,description,nature,category,monthly:{month:val}}]
+let ALL_MONTHS = [];
+let selectedCats = new Set(['All']);
+let fromIdx = 0, toIdx = 0;
+let charts = {};
+let chatHistory = [];
+let apiKey = '';
+
+// ══════════════════════════════════════════
+// FILE HANDLING
+// ══════════════════════════════════════════
+const dropZone = document.getElementById('dropZone');
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag');
+  handleFile(e.dataTransfer.files[0]);
+});
+
+function handleFile(file) {
+  if (!file) return;
+  apiKey = document.getElementById('apiKeyInput').value.trim();
+  const reader = new FileReader();
+  reader.onload = e => {
+    try {
+      parseExcel(e.target.result, file.name);
+    } catch(err) {
+      alert('Error reading file: ' + err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+function parseExcel(buffer, fileName) {
+  const wb = XLSX.read(buffer, { type: 'array' });
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+
+  // Find header row — look for row containing month-like values (e.g. "Oct'23")
+  let headerRow = -1;
+  for (let i = 0; i < Math.min(rows.length, 10); i++) {
+    const joined = (rows[i] || []).join(' ');
+    if (/oct|nov|dec|jan|feb|mar|apr|may|jun|jul|aug|sep/i.test(joined)) {
+      headerRow = i; break;
+    }
+  }
+  if (headerRow === -1) { alert('Could not find month headers in the file.'); return; }
+
+  const headers = rows[headerRow];
+  // Detect month columns
+  const monthCols = [];
+  headers.forEach((h, ci) => {
+    if (h && /[a-z]{3}'\d{2}/i.test(String(h))) {
+      monthCols.push({ col: ci, label: String(h).trim() });
+    }
+  });
+  if (monthCols.length === 0) { alert('No month columns detected.'); return; }
+
+  // Columns: C=index 2 (metric), E=index 4 (description), D=index 3 (nature), F=index 5 (type)
+  // But we'll be flexible — find by scanning header row
+  let snCol=1, metricCol=2, natureCol=3, descCol=4, typeCol=5;
+  headers.forEach((h, i) => {
+    const hs = String(h||'').toLowerCase().trim();
+    if (hs === 'sn') snCol = i;
+    if (hs === 'metric') metricCol = i;
+    if (hs === 'description') descCol = i;
+    if (hs === 'type') typeCol = i;
+  });
+
+  DATA = [];
+  ALL_MONTHS = monthCols.map(m => m.label);
+
+  for (let r = headerRow + 1; r < rows.length; r++) {
+    const row = rows[r];
+    if (!row) continue;
+    const sn = row[snCol];
+    const metric = row[metricCol];
+    if (!metric || String(metric).trim() === '') continue;
+    if (isNaN(parseFloat(sn)) && !sn) continue;
+
+    const nature = String(row[natureCol] || row[3] || '').trim();
+    const desc = String(row[descCol] || row[4] || '').trim();
+    const cat = String(row[typeCol] || row[5] || '').trim();
+
+    const monthly = {};
+    monthCols.forEach(mc => {
+      const v = row[mc.col];
+      monthly[mc.label] = (v !== null && v !== undefined && v !== '') ? parseFloat(v) : null;
+    });
+
+    DATA.push({ sn: parseFloat(sn)||r, metric: String(metric).trim(), description: desc, nature, category: cat || 'Other', monthly });
+  }
+
+  if (DATA.length === 0) { alert('No data rows found. Check file format.'); return; }
+
+  document.getElementById('fileName').textContent = fileName;
+  document.getElementById('uploadScreen').style.display = 'none';
+  document.getElementById('dashWrap').style.display = 'block';
+  fromIdx = 0; toIdx = ALL_MONTHS.length - 1;
+  initFilters();
+  render();
+}
+
+function resetUpload() {
+  document.getElementById('uploadScreen').style.display = 'flex';
+  document.getElementById('dashWrap').style.display = 'none';
+  DATA = []; ALL_MONTHS = []; chatHistory = [];
+  Object.values(charts).forEach(c => c.destroy());
+  charts = {};
+}
+
+// ══════════════════════════════════════════
+// FILTERS
+// ══════════════════════════════════════════
+function initFilters() {
+  const fs = document.getElementById('monthFrom');
+  const ts = document.getElementById('monthTo');
+  fs.innerHTML = ''; ts.innerHTML = '';
+  ALL_MONTHS.forEach((m, i) => {
+    fs.innerHTML += `<option value="${i}">${m}</option>`;
+    ts.innerHTML += `<option value="${i}" ${i===ALL_MONTHS.length-1?'selected':''}>${m}</option>`;
+  });
+  fs.addEventListener('change', e => { fromIdx=+e.target.value; render(); });
+  ts.addEventListener('change', e => { toIdx=+e.target.value; render(); });
+
+  const cats = ['All', ...new Set(DATA.map(d=>d.category).filter(c=>c&&c!=='nan'&&c!==''))].sort((a,b)=>a==='All'?-1:a.localeCompare(b));
+  const pp = document.getElementById('catPills');
+  pp.innerHTML = '';
+  cats.forEach(cat => {
+    const b = document.createElement('button');
+    b.className = 'pill' + (cat==='All'?' active':'');
+    b.textContent = cat;
+    b.onclick = () => toggleCat(cat);
+    pp.appendChild(b);
+  });
+  selectedCats = new Set(['All']);
+}
+
+function toggleCat(cat) {
+  const pills = document.querySelectorAll('.pill');
+  if (cat === 'All') {
+    selectedCats = new Set(['All']);
+    pills.forEach(p => p.classList.toggle('active', p.textContent==='All'));
+  } else {
+    selectedCats.delete('All');
+    pills.forEach(p => { if(p.textContent==='All') p.classList.remove('active'); });
+    selectedCats.has(cat) ? selectedCats.delete(cat) : selectedCats.add(cat);
+    pills.forEach(p => { if(p.textContent===cat) p.classList.toggle('active', selectedCats.has(cat)); });
+    if (selectedCats.size===0) { selectedCats.add('All'); pills.forEach(p=>{ if(p.textContent==='All') p.classList.add('active'); }); }
+  }
+  render();
+}
+
+// ══════════════════════════════════════════
+// HELPERS
+// ══════════════════════════════════════════
+function months() { return ALL_MONTHS.slice(fromIdx, toIdx+1); }
+function filtered() { return selectedCats.has('All') ? DATA : DATA.filter(d=>selectedCats.has(d.category)); }
+function isHigh(m) { return m.nature.toLowerCase().includes('higher'); }
+function pct(a,b) { return (!a||!b) ? null : ((b-a)/Math.abs(a))*100; }
+
+
+function fmt(v, metric) {
+  if (v===null||v===undefined||isNaN(v)) return '—';
+  const ml = metric.toLowerCase();
+    if (ml.includes('revenue achievement')) {
+      return v <= 1
+          ? (v * 100).toFixed(1) + '%'
+          : v.toFixed(1) + '%';
+    }
+  if (ml.includes('revenue')||ml.includes('debt')||ml.includes('collection')||ml.includes('return (ha)')||ml.includes('incentive amount')) {
+    if (Math.abs(v)>=1e7) return '₹'+(v/1e7).toFixed(2)+'Cr';
+    if (Math.abs(v)>=1e5) return '₹'+(v/1e5).toFixed(1)+'L';
+    return '₹'+v.toFixed(0);
+  }
+  if (Math.abs(v)<2 && (ml.includes('%')||ml.includes('rate')||ml.includes('achievement')||ml.includes('ratio'))) return (v*100).toFixed(1)+'%';
+  if (Math.abs(v)>1e6) return (v/1e6).toFixed(2)+'M';
+  if (Math.abs(v)>=1e3) return v.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g,',');
+  if (Math.abs(v)<10) return v.toFixed(2);
+  return v.toFixed(1);
+}
+
+function findMetric(keyword) {
+  const kl = keyword.toLowerCase();
+  return DATA.find(d => d.metric.toLowerCase().includes(kl));
+}
+function findBySn(sn) { return DATA.find(d=>d.sn===sn); }
+
+// ══════════════════════════════════════════
+// KPI STRIP
+// ══════════════════════════════════════════
+function renderKPIs() {
+  const ms = months(), last = ms[ms.length-1], prev = ms[ms.length-2];
+  const keys = [
+    {kw:'Gross Revenue',color:'g'},{kw:'Total Sales',color:''},
+    {kw:'Revenue Achievement',color:''},{kw:'Leads',color:''},
+    {kw:'Overall NPS',color:'g'},{kw:'Attrition',color:'r'},
+    {kw:'CPL',color:'w'},{kw:'Collections',color:'g'},
+  ];
+  document.getElementById('kpiStrip').innerHTML = keys.map(k=>{
+    const m = findMetric(k.kw); if(!m) return '';
+    const lv=m.monthly[last], pv=m.monthly[prev];
+    const chg=pct(pv,lv), good=isHigh(m)?chg>0:chg<0;
+    const tc = chg===null?'':good?'up':'dn', icon=chg===null?'':chg>0?'▲':'▼';
+    return `<div class="kpi ${k.color}">
+      <div class="kpi-lbl">${k.kw}</div>
+      <div class="kpi-val">${fmt(lv,m.metric)}</div>
+      <div class="kpi-sub">${last}</div>
+      ${chg!==null?`<div class="kpi-chg ${tc}">${icon} ${Math.abs(chg).toFixed(1)}% vs ${prev}</div>`:''}
+    </div>`;
+  }).join('');
+}
+
+// ══════════════════════════════════════════
+// CHARTS
+// ══════════════════════════════════════════
+const COLORS=['#4f7cff','#00e5a0','#ff6b35','#a855f7','#ff3b5c','#fbbf24','#06b6d4','#84cc16'];
+const BASE_SCALE = {
+  x:{ticks:{color:'#7a82a0',font:{size:9,family:'IBM Plex Mono'}},grid:{color:'#1e2330'}},
+  y:{ticks:{color:'#7a82a0',font:{size:9,family:'IBM Plex Mono'}},grid:{color:'#1e2330'}}
+};
+const TOOLTIP = {backgroundColor:'#1e2330',borderColor:'#2a3047',borderWidth:1,titleColor:'#e8eaf2',bodyColor:'#7a82a0',padding:8};
+const LEGEND = {labels:{color:'#7a82a0',font:{family:'IBM Plex Mono',size:9},boxWidth:10}};
+
+function mkChart(id, type, labels, datasets, extraOpts={}) {
+  if (charts[id]) { charts[id].destroy(); delete charts[id]; }
+  const canvas = document.getElementById(id);
+  if (!canvas) return;
+  charts[id] = new Chart(canvas, {
+    type, data:{labels, datasets},
+    options:{
+      responsive:true, maintainAspectRatio:false,
+      animation:{duration:400},
+      plugins:{legend:LEGEND, tooltip:TOOLTIP},
+      scales: type==='doughnut'||type==='pie' ? {} : BASE_SCALE,
+      ...extraOpts
+    }
+  });
+}
+
+function renderCharts() {
+  const ms = months();
+  const grid = document.getElementById('chartsGrid');
+
+  // Build chart cards
+  grid.innerHTML = [
+    {id:'c_rev',   title:'Revenue vs Target',           sub:'Gross Revenue (HA) vs Monthly Target'},
+    {id:'c_cr',    title:'Lead Funnel — CR1 · CR2 · CR3', sub:'Conversion rates (%)'},
+    {id:'c_costs', title:'Marketing Costs',             sub:'CPA, CPL, NR CPL trend'},
+    {id:'c_sales', title:'Sales Volume',                sub:'Total Sales & Total Devices'},
+    {id:'c_hr',    title:'HR — Headcount & Attrition',  sub:'Additions vs exits vs attrition %'},
+    {id:'c_nps',   title:'NPS & Training',              sub:'NPS score & Promoters %'},
+    {id:'c_part',  title:'Partner Performance',         sub:'High / Mid / Low — latest month'},
+    {id:'c_fin',   title:'Collections vs Outstanding Debt', sub:'Finance health (₹Cr)'},
+  ].map(c=>`<div class="chart-card"><div class="ct">${c.title}</div><div class="cs">${c.sub}</div><div class="cw"><canvas id="${c.id}"></canvas></div></div>`).join('');
+
+  // Helpers
+  const vals = (sn) => { const m=DATA.find(d=>d.sn===sn); return m ? ms.map(mo=>m.monthly[mo]??null) : ms.map(()=>null); };
+  const valsKw = (kw) => { const m=findMetric(kw); return m ? ms.map(mo=>m.monthly[mo]??null) : ms.map(()=>null); };
+
+  // Revenue vs Target
+  mkChart('c_rev','bar', ms, [
+    {label:'Gross Revenue',data:valsKw('Gross Revenue'),backgroundColor:'#4f7cff55',borderColor:'#4f7cff',borderWidth:1.5},
+    {label:'Target',data:valsKw('Revenue Target'),type:'line',borderColor:'#ff6b35',borderWidth:2,pointRadius:3,tension:0.3,fill:false}
+  ]);
+
+  // CR Funnel
+  const cr1=valsKw('CR 1'), cr2=valsKw('CR 2'), cr3=valsKw('CR 3');
+  mkChart('c_cr','line', ms, [
+    {label:'CR1 (Lead/Session)%',data:cr1.map(v=>v!==null?v*100:null),borderColor:'#4f7cff',tension:0.3,fill:false,pointRadius:3,borderWidth:1.5},
+    {label:'CR2 (Appt/Lead)%',  data:cr2.map(v=>v!==null?v*100:null),borderColor:'#00e5a0',tension:0.3,fill:false,pointRadius:3,borderWidth:1.5},
+    {label:'CR3 (Sales/Appt)%', data:cr3.map(v=>v!==null?v*100:null),borderColor:'#ff6b35',tension:0.3,fill:false,pointRadius:3,borderWidth:1.5},
+  ]);
+
+  // Marketing Costs
+  mkChart('c_costs','line', ms, [
+    {label:'CPA',data:valsKw('CPA'),borderColor:'#ff3b5c',tension:0.3,fill:false,pointRadius:3,borderWidth:1.5},
+    {label:'CPL',data:valsKw('CPL'),borderColor:'#a855f7',tension:0.3,fill:false,pointRadius:3,borderWidth:1.5},
+    {label:'NR CPL',data:valsKw('NR CPL'),borderColor:'#fbbf24',tension:0.3,fill:false,pointRadius:3,borderWidth:1.5},
+  ]);
+
+  // Sales Volume
+  mkChart('c_sales','bar', ms, [
+    {label:'Total Sales',  data:valsKw('Total Sales'),  backgroundColor:'#4f7cff88',borderColor:'#4f7cff',borderWidth:1},
+    {label:'Total Devices',data:valsKw('Total Devices'),backgroundColor:'#00e5a088',borderColor:'#00e5a0',borderWidth:1},
+  ]);
+
+  // HR
+  const attrPct = valsKw('Attrition').map(v=>v!==null?v*100:null);
+  mkChart('c_hr','bar', ms, [
+    {label:'Additions',data:valsKw('Additions'),backgroundColor:'#00e5a088',borderColor:'#00e5a0',borderWidth:1},
+    {label:'Exits',    data:valsKw('Exits'),    backgroundColor:'#ff3b5c88',borderColor:'#ff3b5c',borderWidth:1},
+    {label:'Attrition %',data:attrPct,type:'line',borderColor:'#fbbf24',borderWidth:2,pointRadius:3,tension:0.3,fill:false,yAxisID:'y2'},
+  ], {scales:{...BASE_SCALE, y2:{position:'right',ticks:{color:'#fbbf24',font:{size:9,family:'IBM Plex Mono'}},grid:{display:false}}}});
+
+  // NPS
+  const promoterPct = (findMetric('Promoters%')||findMetric('Promoter'));
+  const promoterVals = promoterPct ? ms.map(mo => promoterPct.monthly[mo]!==null ? promoterPct.monthly[mo]*100 : null) : ms.map(()=>null);
+  const npsM = findMetric('Overall NPS');
+  const npsVals = npsM ? ms.map(mo => npsM.monthly[mo]) : ms.map(()=>null);
+  mkChart('c_nps','line', ms, [
+    {label:'NPS Score',  data:npsVals,     borderColor:'#4f7cff',tension:0.3,fill:false,pointRadius:3,borderWidth:1.5},
+    {label:'Promoters %',data:promoterVals,borderColor:'#00e5a0',tension:0.3,fill:false,pointRadius:3,borderWidth:1.5,yAxisID:'y2'},
+  ], {scales:{...BASE_SCALE, y2:{position:'right',ticks:{color:'#00e5a0',font:{size:9,family:'IBM Plex Mono'}},grid:{display:false}}}});
+
+  // Partner donut — latest month
+  const lastM = ms[ms.length-1];
+  const hp = findMetric('High  Performing')||findMetric('High Performing');
+  const mp = DATA.find(d=>d.metric.toLowerCase().includes('mid performing'));
+  const lp = DATA.find(d=>d.metric.toLowerCase().includes('low performing'));
+  const hv=(hp?.monthly[lastM]||0)*100, mv=(mp?.monthly[lastM]||0)*100, lv=(lp?.monthly[lastM]||0)*100;
+  mkChart('c_part','doughnut',
+    ['High (CR3 ≥33%)','Mid (25-33%)','Low (<25%)'],
+    [{data:[hv,mv,lv],backgroundColor:['#00e5a0aa','#fbbf24aa','#ff3b5caa'],borderColor:['#00e5a0','#fbbf24','#ff3b5c'],borderWidth:1.5}],
+    {plugins:{legend:{position:'bottom',labels:{color:'#7a82a0',font:{family:'IBM Plex Mono',size:9},boxWidth:10}},tooltip:TOOLTIP}}
+  );
+
+  // Finance
+  const debtM = findMetric('Outstanding Debt')||findMetric('Oustanding Debt');
+  const collM = findMetric('Collections');
+  mkChart('c_fin','line', ms, [
+    {label:'Collections (Cr)',   data:(collM?ms.map(mo=>collM.monthly[mo]!==null?collM.monthly[mo]/1e7:null):ms.map(()=>null)), borderColor:'#00e5a0',tension:0.3,fill:false,pointRadius:3,borderWidth:1.5},
+    {label:'Debt Outstanding (Cr)',data:(debtM?ms.map(mo=>debtM.monthly[mo]!==null?debtM.monthly[mo]/1e7:null):ms.map(()=>null)), borderColor:'#ff3b5c',tension:0.3,fill:false,pointRadius:3,borderWidth:1.5},
+  ]);
+}
+
+// ══════════════════════════════════════════
+// AI INSIGHTS
+// ══════════════════════════════════════════
+function renderInsights() {
+  const ms = months(), last=ms[ms.length-1], prev=ms[ms.length-2];
+  const ins = [];
+
+  const get = (kw) => { const m=findMetric(kw); return m?m.monthly[last]:null; };
+  const getM = (kw) => findMetric(kw);
+
+  // Revenue Achievement
+  const ra = getM('Revenue Achievement');
+  if (ra) {
+    const v = ra.monthly[last];
+    const below = ms.filter(m=>ra.monthly[m]!==null&&ra.monthly[m]<0.75).length;
+    ins.push(v<0.75
+      ? {type:'dng',tag:'Revenue',text:`Revenue achievement in ${last} is ${(v*100).toFixed(1)}% — below target. This is the ${below} month(s) below 75% this period.`,action:'→ Increase SC productivity targets, review partner incentive structure, and accelerate high-BIN customer conversions for next month.'}
+      : {type:'pos',tag:'Revenue',text:`Revenue achievement of ${(v*100).toFixed(1)}% in ${last}. Gross revenue is healthy.`,action:'→ Sustain momentum. Push for >85% achievement by focusing on premium device cross-sell.'}
+    );
+  }
+
+  // CPL
+  const cpl = getM('CPL');
+  if (cpl&&ms.length>1) {
+    const chg=pct(cpl.monthly[ms[0]],cpl.monthly[last]);
+    ins.push({type:chg>15?'warn':'',tag:'Marketing Cost',
+      text:`CPL has changed ${chg?.toFixed(1)}% from ₹${cpl.monthly[ms[0]]?.toFixed(0)} (${ms[0]}) to ₹${cpl.monthly[last]?.toFixed(0)} (${last}).`,
+      action:'→ Review paid channel mix. High DTP lead % signals poor targeting quality. Prioritise high-score lead segments to improve CPL efficiency.'
+    });
+  }
+
+  // DTP Lead quality
+  const dtp = getM('DTP Lead %')||getM('DTP Lead');
+  if (dtp) {
+    const v=dtp.monthly[last];
+    if (v!==null&&v<0.1) ins.push({type:'pos',tag:'Lead Quality',text:`DTP lead % dropped to just ${(v*100).toFixed(1)}% in ${last} — a dramatic quality improvement vs earlier months.`,action:'→ Lock in this lead filtering approach for next month. Build on what changed.'});
+    else if (v!==null&&v>0.3) ins.push({type:'warn',tag:'Lead Quality',text:`DTP lead % is high at ${(v*100).toFixed(1)}% in ${last} — indicating poor lead quality.`,action:'→ Tighten whitelisting rules and DTP filters before the next campaign launch.'});
+  }
+
+  // HR Attrition
+  const attr=getM('Attrition');
+  const exits=getM('Employee Exits')||getM('Exits');
+  if (attr) {
+    const v=attr.monthly[last], ev=exits?.monthly[last]||0;
+    ins.push({type:v>0.5?'dng':'warn',tag:'HR',
+      text:`Annualised attrition in ${last} is ${(v*100).toFixed(0)}% with ${ev} exits. ${ms.filter(m=>attr.monthly[m]>0.6).length} month(s) had attrition above 60% annualised.`,
+      action:'→ Conduct exit interviews immediately. If attrition is hitting sales consultants, Oct\'24 pipeline will be directly impacted. Prioritise retention incentives.'
+    });
+  }
+
+  // Partner Performance
+  const hp=getM('High  Performing')||getM('High Performing');
+  if (hp) {
+    const v=hp.monthly[last];
+    ins.push({type:v<0.4?'warn':'',tag:'Partners',
+      text:`${(v*100).toFixed(1)}% of partners are high-performing (CR3 ≥33%) in ${last}. Low performers make up ~${((1-v)*100).toFixed(0)}% of the network.`,
+      action:'→ Launch targeted coaching for mid-to-low performers before next month. Track CR3 weekly for the bottom quartile.'
+    });
+  }
+
+  // NPS
+  const nps=getM('Overall NPS');
+  if (nps) {
+    const v=nps.monthly[last];
+    if (v>20) ins.push({type:'pos',tag:'Training/NPS',text:`NPS score has surged to ${v.toFixed(1)} in ${last} — the strongest in the tracked period.`,action:'→ Identify what\'s driving the NPS recovery and embed those practices. Use promoters as customer testimonials.'});
+    else if (v<0) ins.push({type:'dng',tag:'Training/NPS',text:`NPS is negative at ${v.toFixed(1)} in ${last} — customers are more detractors than promoters.`,action:'→ Urgent review of training quality and post-sale experience. Survey detractors for root cause.'});
+  }
+
+  // Accessories trend
+  const acc=getM('Accessories');
+  if (acc&&ms.length>1) {
+    const chg=pct(acc.monthly[ms[0]],acc.monthly[last]);
+    if (chg>30) ins.push({type:'pos',tag:'E-commerce',text:`Accessories orders grew ${chg?.toFixed(0)}% — from ${acc.monthly[ms[0]]?.toFixed(0)} to ${acc.monthly[last]?.toFixed(0)}.`,action:'→ Accelerate accessories cross-sell at point of HA sale. Bundle deals for next festive season.'});
+  }
+
+  // High End %
+  const he=getM('High End %');
+  if (he&&he.monthly[last]<0.25) {
+    ins.push({type:'warn',tag:'Operations',text:`High-end device mix is at ${(he.monthly[last]*100).toFixed(1)}% in ${last} — below 25%. This compresses ASP and revenue per sale.`,action:'→ Incentivise SCs to recommend premium devices. Introduce high-end device recommendation bonuses.'});
+  }
+
+  // Sep Discount spike
+  const disc=getM('Discount %');
+  if (disc&&disc.monthly[last]>0.28) {
+    ins.push({type:'warn',tag:'Pricing',text:`Discount % rose to ${(disc.monthly[last]*100).toFixed(1)}% in ${last} — the highest in the period. This directly reduces net revenue per device.`,action:'→ Set a discount cap policy. Review authorisation thresholds and consider removing excessive SC-level discounting authority.'});
+  }
+
+  document.getElementById('insightGrid').innerHTML = ins.map(i=>
+    `<div class="ins-card ${i.type}">
+      <div class="ins-tag">${i.tag}</div>
+      <div class="ins-txt">${i.text}</div>
+      <div class="ins-act">${i.action}</div>
+    </div>`
+  ).join('');
+}
+
+// ══════════════════════════════════════════
+// METRICS TABLE
+// ══════════════════════════════════════════
+function renderTable() {
+  const ms = months(), last=ms[ms.length-1], prev=ms[ms.length-2];
+  const data = filtered();
+  const rows = data.map(m=>{
+    const lv=m.monthly[last], pv=m.monthly[prev];
+    const chg=pct(pv,lv);
+    const good = chg===null ? null : isHigh(m)?chg>0:chg<0;
+    const dc = good===null?'':good?'dg':Math.abs(chg)>10?'dr':'dy';
+    const tc = chg===null?'':good?'up':'dn';
+    const icon = chg===null?'':chg>0?'▲':'▼';
+    const cells = ms.map(mo=>{
+      const v=m.monthly[mo];
+      return `<td>${v!==null&&v!==undefined&&!isNaN(v)?fmt(v,m.metric):'<span style="color:var(--muted)">—</span>'}</td>`;
+    }).join('');
+    return `<tr>
+      <td><span class="sdot ${dc}"></span></td>
+      <td class="mn">${m.metric}</td>
+      <td style="color:var(--muted);font-size:10px;max-width:160px;white-space:normal">${m.description!=='nan'?m.description:''}</td>
+      <td style="font-size:9px;color:var(--muted);font-family:var(--mono)">${m.category}</td>
+      ${cells}
+      <td style="font-family:var(--mono)" class="${tc}">${icon} ${chg!==null?Math.abs(chg).toFixed(1)+'%':'—'}</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('tblWrap').innerHTML = `<table>
+    <thead><tr>
+      <th></th><th>Metric</th><th>Description</th><th>Category</th>
+      ${ms.map(m=>`<th>${m}</th>`).join('')}<th>MoM Δ</th>
+    </tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// ══════════════════════════════════════════
+// RENDER
+// ══════════════════════════════════════════
+function render() {
+  renderKPIs();
+  renderCharts();
+  renderInsights();
+  renderTable();
+}
+
+// ══════════════════════════════════════════
+// AI CHAT
+// ══════════════════════════════════════════
+function buildSystemPrompt() {
+  const ms = months();
+  const snapshot = DATA.map(m=>{
+    const vals = ms.map(mo=>`${mo}:${m.monthly[mo]!==null&&!isNaN(m.monthly[mo])?Number(m.monthly[mo]).toFixed(2):'null'}`).join(', ');
+    return `${m.metric} [${m.category}, ${m.nature}]: ${vals}`;
+  }).join('\n');
+  return `You are a sharp business intelligence analyst reviewing an internal KPI dashboard for the period ${ms[0]} to ${ms[ms.length-1]}.
+Data (89 metrics across Marketing, Sales, HR, Finance, Partner, Operations, Training):
+${snapshot}
+Rules: "Lesser the better"=lower is good. "Higher the better"=higher is good. Revenue in Indian Rupees.
+Be concise (max 130 words), specific with numbers and months, and always end with 1 concrete action.`;
+}
+
+function appendMsg(text, role) {
+  const box = document.getElementById('aiMsgs');
+  const d = document.createElement('div');
+  d.className = 'amsg'+(role==='user'?' umsg':'');
+  d.innerHTML = `<div class="av ${role==='user'?'uav':''}">${role==='user'?'You':'AI'}</div><div class="ab">${text}</div>`;
+  box.appendChild(d);
+  box.scrollTop = box.scrollHeight;
+  return d;
+}
+
+async function callClaude(userMsg) {
+  const btn = document.getElementById('sBtn');
+  btn.disabled = true;
+  const loadDiv = appendMsg('<span style="color:var(--muted)">Thinking…</span>', 'ai');
+  chatHistory.push({role:'user', content:userMsg});
+
+  if (!apiKey) {
+    loadDiv.querySelector('.ab').innerHTML = '<span style="color:var(--warn)">Please enter your Claude API key in the upload screen to use the AI chat. Reload the page to enter it.</span>';
+    btn.disabled = false; return;
+  }
+
+  try {
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method:'POST',
+      headers:{'Content-Type':'application/json','x-api-key':apiKey,'anthropic-version':'2023-06-01','anthropic-dangerous-direct-browser-access':'true'},
+      body:JSON.stringify({model:'claude-sonnet-4-6',max_tokens:400,system:buildSystemPrompt(),messages:chatHistory})
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.error?.message||'API error '+res.status);
+    }
+    const data = await res.json();
+    const reply = data.content?.map(c=>c.text||'').join('')||'No response.';
+    chatHistory.push({role:'assistant',content:reply});
+    loadDiv.querySelector('.ab').innerHTML = reply.replace(/\n/g,'<br>');
+  } catch(e) {
+    loadDiv.querySelector('.ab').innerHTML = `<span style="color:var(--danger)">Error: ${e.message}</span>`;
+  }
+  btn.disabled = false;
+  document.getElementById('aiMsgs').scrollTop = 99999;
+}
+
+function sendMsg() {
+  const inp = document.getElementById('aiInp');
+  const msg = inp.value.trim(); if (!msg) return;
+  inp.value = '';
+  appendMsg(msg, 'user');
+  callClaude(msg);
+}
+function sendQuick(btn) { document.getElementById('aiInp').value=btn.textContent; sendMsg(); }
+</script>
+</body>
+</html>
